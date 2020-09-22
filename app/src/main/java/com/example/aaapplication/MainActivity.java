@@ -110,11 +110,14 @@ public class MainActivity extends AppCompatActivity {
                                 String payload = new String(org.jose4j.base64url.Base64.decode(response.getString("payload")));
                                 JSONObject jsonPayload = new JSONObject(payload);
                                 if(nonce.equals(jsonPayload.getString("nonce"))) {
+
+                                    //Sample 2FA Payload
                                     JSONObject secondFactor = new JSONObject();
                                     secondFactor.accumulate("last6Digit", "123456");
                                     secondFactor.accumulate("expiry", "05/27");
                                     secondFactor.accumulate("accountRefNumber", "5099176d-10d4-48e6-b249-92783cc394f8");
                                     secondFactor.accumulate("txnId", "4099176d-10d4-48e6-b249-92783cc394g9");
+
 
                                     SecretKey symmetricKey = generateAESKey();
 
