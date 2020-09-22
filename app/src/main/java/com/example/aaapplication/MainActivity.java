@@ -117,6 +117,9 @@ public class MainActivity extends AppCompatActivity {
                                     secondFactor.accumulate("expiry", "05/27");
                                     secondFactor.accumulate("accountRefNumber", "5099176d-10d4-48e6-b249-92783cc394f8");
                                     secondFactor.accumulate("txnId", "4099176d-10d4-48e6-b249-92783cc394g9");
+                                    secondFactor.accumulate("otp", "333321");
+
+
 
 
                                     SecretKey symmetricKey = generateAESKey();
@@ -131,6 +134,7 @@ public class MainActivity extends AppCompatActivity {
                                     JSONObject linkAccountRequest = new JSONObject();
                                     linkAccountRequest.accumulate("encryptedPayload", encryptedPayload);
                                     linkAccountRequest.accumulate("encryptedKey", encryptedKey);
+                                    linkAccountRequest.accumulate("algo", "AES/GCM/NoPadding");
 
                                     Log.d("linkAccountRequest", linkAccountRequest.toString(4));
 
