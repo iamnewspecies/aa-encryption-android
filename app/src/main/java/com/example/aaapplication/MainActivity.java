@@ -68,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
     String publicKey = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqepUVenHX0xDwJ9d8HalThvZccSBAs2lEaWVVODT+3ctPbVErEJRrHqKx7dfOOcj/CfS2taVWKMM9PtFvHKDXZbbEAH0ozdRg8LuhL3zagev185A/gppXkoOBO3sMpUivSwuijmlwaTMsiqhthcAOap0mACMKiXK4N9VJf61AuDqnjERzzaNso98sV+BseyzONcP7uAy66TjaN/VtonF8otWHUi5YacT7R8LuoRZro0iZ17aM3pDST5OJ1x4c+PSEZDQ7L0AHJpabit/Ze8PpNZE7LnYnwRqJbXSQYwuninAJRAw+1LTqY5e3/hWxDU2GmbGVRSsa6+i+bCk0lurzwIDAQAB";
     //only https urls are allowed
     // change this url according to your needs.
-    String baseURL = "https://c04e318320ee.ngrok.io/api/v1/accounts";
+    String baseURL = "https://aa2909fd6e62.ngrok.io/api/v1/accounts";
     public static final int GCM_IV_LENGTH = 12;
     public static final int GCM_TAG_LENGTH = 16;
 
@@ -106,29 +106,38 @@ public class MainActivity extends AppCompatActivity {
                     public void onResponse(JSONObject response) {
                         Log.d("DiscoverAccounts", response.toString());
                         try {
-                            if(verifySignature(response) && nonce.equals(response.getString("nonce"))) {
+                            if(verifySignature(response)) {
                                 String payload = new String(org.jose4j.base64url.Base64.decode(response.getString("payload")));
                                 JSONObject jsonPayload = new JSONObject(payload);
+                                if(nonce.equals(jsonPayload.getString("nonce"))) {
+                                    JSONObject secondFactor = new JSONObject();
+                                    secondFactor.accumulate("last6Digit", "123456");
+                                    secondFactor.accumulate("expiry", "05/27");
+                                    secondFactor.accumulate("accountRefNumber", "5099176d-10d4-48e6-b249-92783cc394f8");
+                                    secondFactor.accumulate("txnId", "4099176d-10d4-48e6-b249-92783cc394g9");
 
+                                    SecretKey symmetricKey = generateAESKey();
 
-                                JSONObject secondFactor = new JSONObject();
-                                secondFactor.accumulate("last6Digit", "123456");
-                                secondFactor.accumulate("expiry", "05/27");
-                                SecretKey symmetricKey = generateAESKey();
+                                    byte[] IV = new byte[GCM_IV_LENGTH];
+                                    SecureRandom random = new SecureRandom();
+                                    random.nextBytes(IV);
 
-                                String[] encryptedPayload = encryptPayload(secondFactor, symmetricKey);
+                                    String encryptedPayload = encryptPayload(secondFactor, symmetricKey, IV);
 
-                                String encryptedKey = encryptKey(symmetricKey, jsonPayload.getString("publicKey"));
-                                JSONObject linkAccountRequest = new JSONObject();
-                                linkAccountRequest.accumulate("encryptedPayload", encryptedPayload[0]);
-                                linkAccountRequest.accumulate("iv", encryptedPayload[1]);
-                                linkAccountRequest.accumulate("encryptedKey", encryptedKey);
+                                    String encryptedKey = encryptKey(symmetricKey, IV, jsonPayload.getString("publicKey"));
+                                    JSONObject linkAccountRequest = new JSONObject();
+                                    linkAccountRequest.accumulate("encryptedPayload", encryptedPayload);
+                                    linkAccountRequest.accumulate("encryptedKey", encryptedKey);
 
-                                Log.d("linkAccountRequest", linkAccountRequest.toString(4));
+                                    Log.d("linkAccountRequest", linkAccountRequest.toString(4));
 
-                                linkAccount(linkAccountRequest);
+                                    linkAccount(linkAccountRequest);
+                                } else {
+                                    Log.d("nonce", "Not matching");
+                                }
                             } else {
                               // show error that it is
+                                Log.d("JWS", "Verification failure");
                             }
                         } catch (JSONException e) {
                             e.printStackTrace();
@@ -138,7 +147,7 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onErrorResponse(VolleyError error) {
                         error.printStackTrace();
-                        Log.d("Discover accounts error", error.getMessage());
+//                        Log.d("Discover accounts error", error.getMessage());
                     }
         });
 
@@ -173,7 +182,7 @@ public class MainActivity extends AppCompatActivity {
         return isVerified;
     }
 
-    private String encryptKey(SecretKey symmetricKey, String publicKey) {
+    private String encryptKey(SecretKey symmetricKey, byte[] iv, String publicKey) {
         String encryptedKey = null;
         try {
             byte[] publicBytes = org.jose4j.base64url.Base64.decode(publicKey);
@@ -189,7 +198,11 @@ public class MainActivity extends AppCompatActivity {
                 Log.d("nullSymmetricKey", "it is null");
             }
 
-            byte[] ekb = cipher.doFinal(symmetricKey.getEncoded());
+            byte[] key = new byte[iv.length + byteSymKey.length];
+            System.arraycopy(iv, 0, key, 0, iv.length);
+            System.arraycopy(byteSymKey, 0, key, iv.length, byteSymKey.length);
+
+            byte[] ekb = cipher.doFinal(key);
             encryptedKey = Base64.encodeToString(ekb, Base64.NO_WRAP );
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
@@ -208,16 +221,13 @@ public class MainActivity extends AppCompatActivity {
         return encryptedKey;
     }
 
-    private String[] encryptPayload(JSONObject payload, SecretKey key) {
+    private String encryptPayload(JSONObject payload, SecretKey key, byte[] IV) {
         String encryptedPayload = null;
-        String iv = null;
         Cipher cipher = null;
         try {
 
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
-                byte[] IV = new byte[GCM_IV_LENGTH];
-                SecureRandom random = new SecureRandom();
-                random.nextBytes(IV);
+
 
                 cipher = Cipher.getInstance("AES/GCM/NoPadding");
                 GCMParameterSpec gcmParameterSpec = null;
@@ -227,7 +237,7 @@ public class MainActivity extends AppCompatActivity {
                 byte[] ciphertext = cipher.doFinal(payload.toString().getBytes(Charset.defaultCharset()));
 
                 encryptedPayload = new String(Base64.encode(ciphertext, Base64.NO_WRAP));
-                iv = new String(Base64.encode(cipher.getIV(), Base64.NO_WRAP));
+//                iv = new String(Base64.encode(cipher.getIV(), Base64.NO_WRAP));
             }
 
         } catch (NoSuchAlgorithmException e) {
@@ -244,7 +254,7 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
 
-        return new String[] {encryptedPayload, iv};
+        return encryptedPayload;
     }
 
     private void linkAccount(JSONObject linkAccountRequest) {
@@ -273,12 +283,11 @@ public class MainActivity extends AppCompatActivity {
         SecretKey key = null;
         try {
             KeyGenerator keygen = KeyGenerator.getInstance("AES");
-            keygen.init(256);
+            keygen.init(256, new SecureRandom());
             key = keygen.generateKey();
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
-        Log.d("FinalSymKey", "" + key);
         return key;
     }
 }
