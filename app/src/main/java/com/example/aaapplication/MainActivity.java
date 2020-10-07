@@ -68,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
     String publicKey = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqepUVenHX0xDwJ9d8HalThvZccSBAs2lEaWVVODT+3ctPbVErEJRrHqKx7dfOOcj/CfS2taVWKMM9PtFvHKDXZbbEAH0ozdRg8LuhL3zagev185A/gppXkoOBO3sMpUivSwuijmlwaTMsiqhthcAOap0mACMKiXK4N9VJf61AuDqnjERzzaNso98sV+BseyzONcP7uAy66TjaN/VtonF8otWHUi5YacT7R8LuoRZro0iZ17aM3pDST5OJ1x4c+PSEZDQ7L0AHJpabit/Ze8PpNZE7LnYnwRqJbXSQYwuninAJRAw+1LTqY5e3/hWxDU2GmbGVRSsa6+i+bCk0lurzwIDAQAB";
     //only https urls are allowed
     // change this url according to your needs.
-    String baseURL = "https://aa2909fd6e62.ngrok.io/api/v1/accounts";
+    String baseURL = "https://0dbd0f621e0d.ngrok.io/api/v1/accounts";
     public static final int GCM_IV_LENGTH = 12;
     public static final int GCM_TAG_LENGTH = 16;
 
@@ -128,13 +128,17 @@ public class MainActivity extends AppCompatActivity {
                                     SecureRandom random = new SecureRandom();
                                     random.nextBytes(IV);
 
-                                    String encryptedPayload = encryptPayload(secondFactor, symmetricKey, IV);
+                                    String[] encryptedPayloadAndTag = encryptPayload(secondFactor, symmetricKey, IV);
 
-                                    String encryptedKey = encryptKey(symmetricKey, IV, jsonPayload.getString("publicKey"));
+                                    String encryptedKey = encryptKey(symmetricKey, jsonPayload.getString("publicKey"));
                                     JSONObject linkAccountRequest = new JSONObject();
-                                    linkAccountRequest.accumulate("encryptedPayload", encryptedPayload);
+                                    linkAccountRequest.accumulate("encryptedPayload", encryptedPayloadAndTag[0]);
                                     linkAccountRequest.accumulate("encryptedKey", encryptedKey);
+                                    linkAccountRequest.accumulate("iv", Base64.encodeToString(IV, Base64.NO_WRAP));
                                     linkAccountRequest.accumulate("algo", "AES/GCM/NoPadding");
+
+                                    linkAccountRequest.accumulate("tag", encryptedPayloadAndTag[1]);
+
 
                                     Log.d("linkAccountRequest", linkAccountRequest.toString(4));
 
@@ -189,7 +193,7 @@ public class MainActivity extends AppCompatActivity {
         return isVerified;
     }
 
-    private String encryptKey(SecretKey symmetricKey, byte[] iv, String publicKey) {
+    private String encryptKey(SecretKey symmetricKey, String publicKey) {
         String encryptedKey = null;
         try {
             byte[] publicBytes = org.jose4j.base64url.Base64.decode(publicKey);
@@ -201,15 +205,8 @@ public class MainActivity extends AppCompatActivity {
             Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
             cipher.init(Cipher.ENCRYPT_MODE, pk);
             byte[] byteSymKey = symmetricKey.getEncoded();
-            if(byteSymKey == null) {
-                Log.d("nullSymmetricKey", "it is null");
-            }
 
-            byte[] key = new byte[iv.length + byteSymKey.length];
-            System.arraycopy(iv, 0, key, 0, iv.length);
-            System.arraycopy(byteSymKey, 0, key, iv.length, byteSymKey.length);
-
-            byte[] ekb = cipher.doFinal(key);
+            byte[] ekb = cipher.doFinal(byteSymKey);
             encryptedKey = Base64.encodeToString(ekb, Base64.NO_WRAP );
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
@@ -228,9 +225,10 @@ public class MainActivity extends AppCompatActivity {
         return encryptedKey;
     }
 
-    private String encryptPayload(JSONObject payload, SecretKey key, byte[] IV) {
+    private String[] encryptPayload(JSONObject payload, SecretKey key, byte[] IV) {
         String encryptedPayload = null;
         Cipher cipher = null;
+        String tag = null;
         try {
 
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
@@ -242,9 +240,10 @@ public class MainActivity extends AppCompatActivity {
 
                 cipher.init(Cipher.ENCRYPT_MODE, key, gcmParameterSpec);
                 byte[] ciphertext = cipher.doFinal(payload.toString().getBytes(Charset.defaultCharset()));
+                encryptedPayload = Base64.encodeToString(ciphertext,0, ciphertext.length - (GCM_TAG_LENGTH * 8),  Base64.NO_WRAP);
 
-                encryptedPayload = new String(Base64.encode(ciphertext, Base64.NO_WRAP));
-//                iv = new String(Base64.encode(cipher.getIV(), Base64.NO_WRAP));
+                Log.d("TAG LENGTH", "" + (ciphertext.length - (GCM_TAG_LENGTH * 8)));
+                tag = Base64.encodeToString(ciphertext,ciphertext.length - (GCM_TAG_LENGTH * 8), GCM_TAG_LENGTH * 8,  Base64.NO_WRAP);
             }
 
         } catch (NoSuchAlgorithmException e) {
@@ -261,7 +260,7 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
 
-        return encryptedPayload;
+        return new String[] {encryptedPayload, tag};
     }
 
     private void linkAccount(JSONObject linkAccountRequest) {
