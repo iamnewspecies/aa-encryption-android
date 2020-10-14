@@ -240,10 +240,10 @@ public class MainActivity extends AppCompatActivity {
 
                 cipher.init(Cipher.ENCRYPT_MODE, key, gcmParameterSpec);
                 byte[] ciphertext = cipher.doFinal(payload.toString().getBytes(Charset.defaultCharset()));
-                encryptedPayload = Base64.encodeToString(ciphertext,0, ciphertext.length - (GCM_TAG_LENGTH * 8),  Base64.NO_WRAP);
+                encryptedPayload = Base64.encodeToString(ciphertext,0, ciphertext.length - GCM_TAG_LENGTH,  Base64.NO_WRAP);
 
                 Log.d("TAG LENGTH", "" + (ciphertext.length - (GCM_TAG_LENGTH * 8)));
-                tag = Base64.encodeToString(ciphertext,ciphertext.length - (GCM_TAG_LENGTH * 8), GCM_TAG_LENGTH * 8,  Base64.NO_WRAP);
+                tag = Base64.encodeToString(ciphertext,ciphertext.length - GCM_TAG_LENGTH, GCM_TAG_LENGTH,  Base64.NO_WRAP);
             }
 
         } catch (NoSuchAlgorithmException e) {
